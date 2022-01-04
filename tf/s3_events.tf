@@ -1,14 +1,9 @@
-# AWS_DEFAULT_REGION=eu-central-1 terraform plan -var bucket=treeverse-ariels-test  
+# AWS_DEFAULT_REGION=... terraform plan -var bucket=...
 
 data "aws_s3_bucket" "bucket" {
   bucket = var.bucket
 }
 
-# This should properly be a FIFO queue, to avoid mixing up Create and Delete
-# operations.  However AWS says:
-#
-# error putting S3 Bucket Notification Configuration: InvalidArgument: FIFO
-#     SQS queues are not supported.
 resource "aws_sqs_queue" "s3_events_queue" {
   name = "terminus-s3-events-queue"
 
@@ -18,14 +13,6 @@ resource "aws_sqs_queue" "s3_events_queue" {
   # ReceiveMessage is a long poll.
   receive_wait_time_seconds = 20
   
-  # Could use a dead-letter queue: no reordering issues are expected for S3
-  # events, as all objects must have distinct names to be counted correctly.
-  # This may be an issue as a poisoned message blocks processing.  Will need
-  # to monitor the queue.
-  #
-  # If we *do* want to work for objects with distinct names, the ordering of
-  # messages becomes critical, and dead-letter queues cannot be used at all.
-
   policy = <<POLICY
 {
   "Version": "2012-10-17",
