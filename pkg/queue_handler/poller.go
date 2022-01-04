@@ -16,8 +16,8 @@ import (
 	"github.com/treeverse/terminus/pkg/store"
 )
 
-// Poll repeatedly long-polls on client, and writes SQS messages to outCh,
-// until ctx is cancelled.
+// Poll repeatedly long-polls on client, and updates the store s, until ctx
+// is cancelled.
 func Poll(ctx context.Context, l *log.Logger, client sqs.SQS, queueUrl string, keyPattern *regexp.Regexp, keyReplace string, s store.Store) {
 	for {
 		in := &sqs.ReceiveMessageInput{
@@ -41,7 +41,7 @@ func Poll(ctx context.Context, l *log.Logger, client sqs.SQS, queueUrl string, k
 			continue
 		}
 		for i, m := range out.Messages {
-			err = UpdateDB(ctx, m, keyPattern, keyReplace, s)
+			err = UpdateStore(ctx, m, keyPattern, keyReplace, s)
 			if err != nil {
 				l.Printf("ERROR (%d/%d): %s\n", i, len(out.Messages), err)
 				continue // Don't delete, message may be retries or dead-lettered.
@@ -59,8 +59,8 @@ func Poll(ctx context.Context, l *log.Logger, client sqs.SQS, queueUrl string, k
 	}
 }
 
-// UpdateDB updates quota on s from an SQS record.
-func UpdateDB(ctx context.Context, message *sqs.Message, keyPattern *regexp.Regexp, keyReplace string, s store.Store) error {
+// UpdateStore updates quota on s from an SQS record.
+func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.Regexp, keyReplace string, s store.Store) error {
 	var records struct {
 		Records []S3EventRecord `json:"Records"`
 	}
@@ -88,7 +88,7 @@ func UpdateDB(ctx context.Context, message *sqs.Message, keyPattern *regexp.Rege
 		}
 
 		key := keyPattern.ReplaceAllString(o.Path, keyReplace)
-		s.AddSizeBytes(key, o.DeltaBytes)
+		s.AddSizeBytes(key, o.SizeBytes)
 	}
 	return merr.ErrorOrNil()
 }

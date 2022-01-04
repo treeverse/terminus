@@ -252,7 +252,7 @@ func TestUpdateDB(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			s := makeStore()
-			err := queue_handler.UpdateDB(ctx, tc.In, keyPattern, keyReplace, s)
+			err := queue_handler.UpdateStore(ctx, tc.In, keyPattern, keyReplace, s)
 			if tc.ErrPredicate != nil {
 				testErr := tc.ErrPredicate(err)
 				if testErr != nil {

@@ -40,11 +40,11 @@ type S3Events struct {
 	Records []S3EventRecord `json:"records"`
 }
 
-type ObjectPathAndDelta struct {
+type ObjectPathAndSize struct {
 	// Path is the complete S3 path to the object, "s3://...".
 	Path string
-	// DeltaBytes is the number of bytes changed by this path.
-	DeltaBytes int64
+	// SizeBytes is the number of bytes changed by this path.
+	SizeBytes int64
 }
 
 var (
@@ -54,7 +54,7 @@ var (
 	ErrMissingField = errors.New("field missing")
 )
 
-func checkVersion(version string) error {
+func checkEventVersion(version string) error {
 	if version == SupportedEventVersion {
 		return nil
 	}
@@ -72,32 +72,32 @@ func checkVersion(version string) error {
 // ComputeDelta extracts ObjectPathAndDelta from an S3EventRecord.  It
 // returns ErrNotAChange if there are no delta bytes to extract, or
 // ErrUnknownEvent if it could not even recognize the event type.
-func ComputeDelta(r *S3EventRecord) (ObjectPathAndDelta, error) {
-	if err := checkVersion(r.EventVersion); err != nil {
-		return ObjectPathAndDelta{}, err
+func ComputeDelta(r *S3EventRecord) (ObjectPathAndSize, error) {
+	if err := checkEventVersion(r.EventVersion); err != nil {
+		return ObjectPathAndSize{}, err
 	}
 	if r.EventName == EventTypeTest || strings.HasPrefix(r.EventName, EventTypeObjectRemovedPrefix) {
-		return ObjectPathAndDelta{}, ErrNotAChange
+		return ObjectPathAndSize{}, ErrNotAChange
 	}
 	if !strings.HasPrefix(r.EventName, EventTypeObjectCreatedPrefix) {
-		return ObjectPathAndDelta{}, fmt.Errorf("%s: %w", r.EventName, ErrUnknownEvent)
+		return ObjectPathAndSize{}, fmt.Errorf("%s: %w", r.EventName, ErrUnknownEvent)
 	}
 
 	bucket := r.S3.Bucket.Name
 	if bucket == "" {
-		return ObjectPathAndDelta{}, fmt.Errorf("bucket.name %w", ErrMissingField)
+		return ObjectPathAndSize{}, fmt.Errorf("bucket.name %w", ErrMissingField)
 	}
 	key := r.S3.Object.Key
 	if key == "" {
-		return ObjectPathAndDelta{}, fmt.Errorf("object.key %w", ErrMissingField)
+		return ObjectPathAndSize{}, fmt.Errorf("object.key %w", ErrMissingField)
 	}
 	if r.S3.Object.Size == nil {
-		return ObjectPathAndDelta{}, fmt.Errorf("object.size %w", ErrMissingField)
+		return ObjectPathAndSize{}, fmt.Errorf("object.size %w", ErrMissingField)
 	}
 	size := *r.S3.Object.Size
 
-	return ObjectPathAndDelta{
-		Path:       fmt.Sprint("s3://" + bucket + "/" + key),
-		DeltaBytes: size,
+	return ObjectPathAndSize{
+		Path:      fmt.Sprint("s3://" + bucket + "/" + key),
+		SizeBytes: size,
 	}, nil
 }
