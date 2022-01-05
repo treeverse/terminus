@@ -33,7 +33,8 @@ var (
 )
 
 func runDBInstance(dockerPool *dockertest.Pool) (string, func()) {
-	ctx, _ := context.WithTimeout(context.Background(), dbSetupTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dbSetupTimeout)
+	defer cancel()
 	resource, err := dockerPool.Run("postgres", "11", []string{
 		"POSTGRES_USER=terminus",
 		"POSTGRES_PASSWORD=testing",
@@ -102,15 +103,20 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func value(sizeBytes int64) store.Value {
+	return store.Value{SizeBytes: sizeBytes}
+}
+
 func TestSetGet(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), dbSetupTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dbSetupTimeout)
+	defer cancel()
 	s, err := sql.NewSQLStore(db)
 	if err != nil {
 		t.Fatalf("Open SQL store: %s", err)
 	}
 
 	key := "set:a"
-	expected := store.Value{17}
+	expected := value(17)
 	err = s.Set(ctx, key, expected)
 	if err != nil {
 		t.Errorf("Set %s: %s", key, err)
@@ -143,14 +149,15 @@ func TestSetGet(t *testing.T) {
 }
 
 func TestAddSizeBytes(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), dbSetupTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dbSetupTimeout)
+	defer cancel()
 	s, err := sql.NewSQLStore(db)
 	if err != nil {
 		t.Fatalf("Open SQL store: %s", err)
 	}
 
 	keyInitialized, keyUsed := "set:a", "set:b"
-	if err = s.Set(ctx, keyInitialized, store.Value{1}); err != nil {
+	if err = s.Set(ctx, keyInitialized, value(1)); err != nil {
 		t.Fatalf("Set %s: %s", keyInitialized, err)
 	}
 
