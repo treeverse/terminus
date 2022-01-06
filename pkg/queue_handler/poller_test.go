@@ -26,7 +26,7 @@ func makeStore() *Store {
 	return ret
 }
 
-func (s *Store) Get(key string) (store.Value, error) {
+func (s *Store) Get(_ context.Context, key string) (store.Value, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if size, ok := s.V[key]; !ok {
@@ -36,14 +36,14 @@ func (s *Store) Get(key string) (store.Value, error) {
 	}
 }
 
-func (s *Store) Set(key string, value store.Value) error {
+func (s *Store) Set(_ context.Context, key string, value store.Value) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.V[key] = value.SizeBytes
 	return nil
 }
 
-func (s *Store) AddSizeBytes(key string, numBytes int64) error {
+func (s *Store) AddSizeBytes(_ context.Context, key string, numBytes int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.V[key] += numBytes
