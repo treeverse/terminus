@@ -1,7 +1,29 @@
-# AWS_DEFAULT_REGION=... terraform plan -var bucket=...
+# AWS_DEFAULT_REGION=... terraform plan -var buckets='["bucket1", "bucket2", ...]'
 
-data "aws_s3_bucket" "bucket" {
-  bucket = var.bucket
+data "aws_s3_bucket" "buckets" {
+  for_each = toset(var.buckets)
+  bucket = each.key
+}
+
+data "aws_iam_policy_document" "s3_events_queue_policy" {
+  statement {
+    sid = "AllowEventsFromS3Buckets"
+
+    principals {
+      type = "*"
+      identifiers = ["*"]
+    }
+
+    actions = ["sqs:SendMessage"]
+
+    resources = ["arn:aws:sqs:*:*:terminus-s3-events-queue"]
+
+    condition {
+      test = "ArnLike"
+      variable = "aws:SourceArn"
+     values = [for bucket in data.aws_s3_bucket.buckets : bucket.arn]
+    }
+  }
 }
 
 resource "aws_sqs_queue" "s3_events_queue" {
@@ -12,23 +34,9 @@ resource "aws_sqs_queue" "s3_events_queue" {
 
   # ReceiveMessage is a long poll.
   receive_wait_time_seconds = 20
-  
-  policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "sqs:SendMessage",
-      "Resource": "arn:aws:sqs:*:*:terminus-s3-events-queue",
-      "Condition": {
-        "ArnEquals": { "aws:SourceArn": "${data.aws_s3_bucket.bucket.arn}" }
-      }
-    }
-  ]
-}
-POLICY
+
+  # Allow events from all configured buckets.
+  policy = data.aws_iam_policy_document.s3_events_queue_policy.json
 
   tags = {
     service = "terminus"
@@ -36,7 +44,8 @@ POLICY
 }
 
 resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = data.aws_s3_bucket.bucket.id
+  for_each = data.aws_s3_bucket.buckets
+  bucket = "${each.value.id}"
 
   queue {
     queue_arn     = aws_sqs_queue.s3_events_queue.arn

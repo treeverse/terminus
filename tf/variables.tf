@@ -1,3 +1,4 @@
-variable "bucket" {
-  description = "Name of the bucket"
+variable "buckets" {
+  description = "Names of buckets to monitor, e.g. ``[\"bucket1\", \"bucket2\", ...]''"
+  type = list(string)
 }
