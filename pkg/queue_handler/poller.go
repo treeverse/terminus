@@ -21,7 +21,7 @@ import (
 func Poll(ctx context.Context, l *log.Logger, client sqs.SQS, queueUrl string, keyPattern *regexp.Regexp, keyReplace string, s store.Store) {
 	for {
 		in := &sqs.ReceiveMessageInput{
-			// TODO(ariels): AttributeNames
+			// TODO(ariels): Limiting AttributeNames might increase performance.
 			MaxNumberOfMessages: aws.Int64(10),
 			MessageAttributeNames: []*string{
 				aws.String(sqs.QueueAttributeNameAll),
@@ -79,7 +79,7 @@ func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.R
 
 	var merr *multierror.Error
 	for i, rec := range records.Records {
-		o, err := ComputeDelta(&rec)
+		o, err := ComputePathAndSize(&rec)
 		if err != nil && !errors.Is(err, ErrNotAChange) {
 			merr = multierror.Append(merr, fmt.Errorf("record parse failed for message %s @%d: %w\n", aws.StringValue(message.MessageId), i, err))
 		}

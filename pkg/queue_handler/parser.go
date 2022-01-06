@@ -69,10 +69,10 @@ func checkEventVersion(version string) error {
 	return nil
 }
 
-// ComputeDelta extracts ObjectPathAndDelta from an S3EventRecord.  It
+// ComputePathAndSize extracts ObjectPathAndDelta from an S3EventRecord.  It
 // returns ErrNotAChange if there are no delta bytes to extract, or
 // ErrUnknownEvent if it could not even recognize the event type.
-func ComputeDelta(r *S3EventRecord) (ObjectPathAndSize, error) {
+func ComputePathAndSize(r *S3EventRecord) (ObjectPathAndSize, error) {
 	if err := checkEventVersion(r.EventVersion); err != nil {
 		return ObjectPathAndSize{}, err
 	}
