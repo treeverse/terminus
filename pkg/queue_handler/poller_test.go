@@ -107,7 +107,7 @@ func (e *event) WithVersion(version string) *event {
 
 // WithType returns event with *name* set.
 func (e *event) WithType(name string) *event {
-	e.Name = "s3:" + name
+	e.Name = name
 	return e
 }
 
