@@ -107,10 +107,42 @@ func value(sizeBytes int64) store.Value {
 	return store.Value{SizeBytes: sizeBytes}
 }
 
-func TestSetGet(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), dbSetupTimeout)
+const defaultQuota = 50
+
+func TestSet(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTestTimeout)
 	defer cancel()
-	s, err := sql.NewSQLStore(db)
+	s, err := sql.NewSQLStore(db, defaultQuota)
+	if err != nil {
+		t.Fatalf("Open SQL store: %s", err)
+	}
+
+	key := "set:a"
+	cases := []struct {
+		Name      string
+		Key       string
+		SizeBytes int64
+		Err       error
+	}{
+		{"Zero", key, 0, nil},
+		{"OK", key, defaultQuota * 3 / 4, nil},
+		{"Exceeded", key, defaultQuota + 1, store.ErrQuotaExceeded},
+	}
+
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			err := s.Set(ctx, c.Key, value(c.SizeBytes))
+			if !errors.Is(err, c.Err) {
+				t.Errorf("Set %s: Expected error %s, got %s", key, c.Err, err)
+			}
+		})
+	}
+}
+
+func TestSetGet(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), dbTestTimeout)
+	defer cancel()
+	s, err := sql.NewSQLStore(db, defaultQuota)
 	if err != nil {
 		t.Fatalf("Open SQL store: %s", err)
 	}
@@ -149,9 +181,9 @@ func TestSetGet(t *testing.T) {
 }
 
 func TestAddSizeBytes(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), dbSetupTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTestTimeout)
 	defer cancel()
-	s, err := sql.NewSQLStore(db)
+	s, err := sql.NewSQLStore(db, defaultQuota)
 	if err != nil {
 		t.Fatalf("Open SQL store: %s", err)
 	}
@@ -162,6 +194,9 @@ func TestAddSizeBytes(t *testing.T) {
 	}
 
 	var value store.Value
+
+	// Not table-driven cases -- the sequence is important here to keep
+	// developing the state.
 
 	if err = s.AddSizeBytes(ctx, keyUsed, 2); err != nil {
 		t.Errorf("AddSizeBytes %s: %s", keyUsed, err)
@@ -194,5 +229,9 @@ func TestAddSizeBytes(t *testing.T) {
 
 	if err = s.AddSizeBytes(ctx, keyUsed, 4); err != nil {
 		t.Errorf("AddSizeBytes %s: %s", keyUsed, err)
+	}
+
+	if err = s.AddSizeBytes(ctx, keyUsed, defaultQuota); !errors.Is(err, store.ErrQuotaExceeded) {
+		t.Errorf("AddSizeBytes %s: expected quota exceeded, got %s", keyUsed, err)
 	}
 }

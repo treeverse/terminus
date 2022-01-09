@@ -88,7 +88,13 @@ func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.R
 		}
 
 		key := keyPattern.ReplaceAllString(o.Path, keyReplace)
-		s.AddSizeBytes(ctx, key, o.SizeBytes)
+		err = s.AddSizeBytes(ctx, key, o.SizeBytes)
+		if errors.Is(err, store.ErrQuotaExceeded) {
+			fmt.Printf("[TODO] Quota exceeded, key %s", key)
+		} else if err != nil {
+			merr = multierror.Append(merr, fmt.Errorf("add %d bytes to key %s: %w", o.SizeBytes, key, err))
+			continue
+		}
 	}
 	return merr.ErrorOrNil()
 }
