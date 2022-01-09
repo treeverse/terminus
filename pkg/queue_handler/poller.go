@@ -88,7 +88,7 @@ func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.R
 		}
 
 		key := keyPattern.ReplaceAllString(o.Path, keyReplace)
-		s.AddSizeBytes(key, o.SizeBytes)
+		s.AddSizeBytes(ctx, key, o.SizeBytes)
 	}
 	return merr.ErrorOrNil()
 }
