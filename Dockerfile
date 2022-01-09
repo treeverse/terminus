@@ -12,12 +12,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy project
-COPY . ./
+COPY ./pkg/ ./pkg/
+COPY ./cmd/ ./cmd/
 
-# Build a binaries
+# Build the binary
 RUN go build -o terminus ./cmd/terminus
 
-# lakectl image
+# terminus image
 FROM alpine:3.12.0 AS terminus
 WORKDIR /app
 ENV PATH /app:$PATH
