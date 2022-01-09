@@ -1,5 +1,4 @@
-// Package postgres provides a store.Store that keeps data on a SQL
-// database.
+// Package sql provides a store.Store that keeps data on a SQL database.
 package sql
 
 import (

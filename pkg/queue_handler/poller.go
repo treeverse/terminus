@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -16,9 +17,11 @@ import (
 	"github.com/treeverse/terminus/pkg/store"
 )
 
+const sleepAfterReceiveFailed = 2 * time.Second
+
 // Poll repeatedly long-polls on client, and updates the store s, until ctx
 // is cancelled.
-func Poll(ctx context.Context, l *log.Logger, client sqs.SQS, queueUrl string, keyPattern *regexp.Regexp, keyReplace string, s store.Store) {
+func Poll(ctx context.Context, l *log.Logger, client *sqs.SQS, queueUrl string, keyPattern *regexp.Regexp, keyReplace string, s store.Store) {
 	for {
 		in := &sqs.ReceiveMessageInput{
 			// TODO(ariels): Limiting AttributeNames might increase performance.
@@ -38,6 +41,7 @@ func Poll(ctx context.Context, l *log.Logger, client sqs.SQS, queueUrl string, k
 		if err != nil {
 			// TODO(ariels): Replace with a better logger
 			l.Printf("ERROR: %s\n", err)
+			time.Sleep(sleepAfterReceiveFailed)
 			continue
 		}
 		for i, m := range out.Messages {
@@ -74,7 +78,7 @@ func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.R
 		if message.MessageId != nil {
 			id = *message.MessageId
 		}
-		return fmt.Errorf("JSON parse failed for message %s: %s\n", id, err)
+		return fmt.Errorf("JSON parse failed for message %s: %w\n", id, err)
 	}
 
 	var merr *multierror.Error
@@ -87,8 +91,12 @@ func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.R
 			continue
 		}
 
-		key := keyPattern.ReplaceAllString(o.Path, keyReplace)
-		err = s.AddSizeBytes(ctx, key, o.SizeBytes)
+		if match := keyPattern.FindStringSubmatchIndex(o.Path); len(match) == 0 {
+			continue
+		}
+
+		key := keyPattern.ExpandString(nil, keyReplace, o.Path, match)
+		err = s.AddSizeBytes(ctx, string(key), o.SizeBytes)
 		if errors.Is(err, store.ErrQuotaExceeded) {
 			fmt.Printf("[TODO] Quota exceeded, key %s", key)
 		} else if err != nil {
