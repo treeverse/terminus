@@ -13,9 +13,9 @@ const (
 	SupportedEventVersion      = "v2.1"
 	SupportedEventMajorVersion = "v2"
 
-	EventTypeTest                = "s3:TestEvent"
-	EventTypeObjectCreatedPrefix = "s3:ObjectCreated:"
-	EventTypeObjectRemovedPrefix = "s3:ObjectRemoved:"
+	EventTypeTest                = "TestEvent"
+	EventTypeObjectCreatedPrefix = "ObjectCreated:"
+	EventTypeObjectRemovedPrefix = "ObjectRemoved:"
 )
 
 // S3EventRecord is the Go-ish version of the JSON object sent as an S3 event.
