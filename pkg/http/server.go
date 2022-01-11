@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/pprof"
+	http_pprof "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
 	"time"
 
@@ -32,7 +33,7 @@ type Server struct {
 func (s *Server) Serve(ctx context.Context, listenAddress string) {
 	router := chi.NewRouter()
 	router.Mount("/_health", ServeHealth())
-	router.Mount("/_pprof/", http.HandlerFunc(pprof.Index))
+	router.Mount("/internal/_pprof/", ServePPRof())
 	// Internal service, respond only on a designated "internal" endpoint.
 	router.Mount("/internal/api/v1", s.ServeREST())
 	server := &http.Server{
@@ -98,5 +99,22 @@ func (s *Server) ServeREST() http.Handler {
 			return
 		}
 	})
+	return router
+}
+
+func ServePPRof() http.Handler {
+	router := chi.NewRouter()
+	router.Get("/", http_pprof.Index)
+	for _, profile := range pprof.Profiles() {
+		name := profile.Name()
+		handler := http_pprof.Handler(name)
+		// BUG(ariels): Also handles non-GET operations.
+		router.Handle("/"+name, handler)
+	}
+	router.Get("/cmdline", http_pprof.Cmdline)
+	router.Get("/profile", http_pprof.Profile)
+	router.Get("/symbol", http_pprof.Symbol)
+	router.Get("/trace", http_pprof.Trace)
+
 	return router
 }
