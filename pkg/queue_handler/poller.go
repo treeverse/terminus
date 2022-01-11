@@ -91,7 +91,8 @@ func UpdateStore(ctx context.Context, l *log.Logger, message *sqs.Message, keyPa
 			continue
 		}
 
-		if match := keyPattern.FindStringSubmatchIndex(o.Path); len(match) == 0 {
+		match := keyPattern.FindStringSubmatchIndex(o.Path)
+		if len(match) == 0 {
 			continue
 		}
 
