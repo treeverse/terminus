@@ -45,7 +45,7 @@ func Poll(ctx context.Context, l *log.Logger, client *sqs.SQS, queueUrl string, 
 			continue
 		}
 		for i, m := range out.Messages {
-			err = UpdateStore(ctx, m, keyPattern, keyReplace, s)
+			err = UpdateStore(ctx, l, m, keyPattern, keyReplace, s)
 			if err != nil {
 				l.Printf("ERROR (%d/%d): %s\n", i, len(out.Messages), err)
 				continue // Don't delete, message may be retries or dead-lettered.
@@ -64,7 +64,7 @@ func Poll(ctx context.Context, l *log.Logger, client *sqs.SQS, queueUrl string, 
 }
 
 // UpdateStore updates quota on s from an SQS record.
-func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.Regexp, keyReplace string, s store.Store) error {
+func UpdateStore(ctx context.Context, l *log.Logger, message *sqs.Message, keyPattern *regexp.Regexp, keyReplace string, s store.Store) error {
 	var records struct {
 		Records []S3EventRecord `json:"Records"`
 	}
@@ -98,7 +98,7 @@ func UpdateStore(ctx context.Context, message *sqs.Message, keyPattern *regexp.R
 		key := keyPattern.ExpandString(nil, keyReplace, o.Path, match)
 		err = s.AddSizeBytes(ctx, string(key), o.SizeBytes)
 		if errors.Is(err, store.ErrQuotaExceeded) {
-			fmt.Printf("[TODO] Quota exceeded, key %s", key)
+			l.Printf("[TODO] Quota exceeded, key %s\n", key)
 		} else if err != nil {
 			merr = multierror.Append(merr, fmt.Errorf("add %d bytes to key %s: %w", o.SizeBytes, key, err))
 			continue
