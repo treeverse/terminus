@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-test/deep"
+	"log"
 	"regexp"
 	"sync"
 	"testing"
@@ -256,7 +257,7 @@ func TestUpdateDB(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			s := makeStore()
-			err := queue_handler.UpdateStore(ctx, tc.In, keyPattern, keyReplace, s)
+			err := queue_handler.UpdateStore(ctx, log.Default(), tc.In, keyPattern, keyReplace, s)
 			if tc.ErrPredicate != nil {
 				testErr := tc.ErrPredicate(err)
 				if testErr != nil {
