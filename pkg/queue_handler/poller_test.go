@@ -63,6 +63,10 @@ func (s *Store) Diff(expectedV map[string]int64) []string {
 	return deep.Equal(expectedV, actualV)
 }
 
+func (s *Store) GetExceeded(_ context.Context) ([]store.Record, error) {
+	panic("Unimplemented!")
+}
+
 func ptr(s string) *string {
 	return &s
 }

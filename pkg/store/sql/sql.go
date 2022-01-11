@@ -111,3 +111,32 @@ func (s *SQLStore) AddSizeBytes(ctx context.Context, key string, numBytes int64)
 	}
 	return nil
 }
+
+func (s *SQLStore) GetExceeded(ctx context.Context) ([]store.Record, error) {
+	ret, err := s.transact(ctx, func(tx *sql.Tx) (interface{}, error) {
+		rows, err := tx.QueryContext(ctx, `
+			SELECT key, size_bytes, quota FROM (
+				SELECT key, size_bytes, COALESCE(quota, $1) quota FROM usage
+			) s WHERE size_bytes > quota`,
+			s.DefaultQuotaBytes)
+		if err != nil {
+			return nil, fmt.Errorf("select keys over quota: %w", err)
+		}
+		var records []store.Record
+		for rows.Next() {
+			var r store.Record
+			if err := rows.Scan(&r.Key, &r.Info.UsageBytes, &r.Info.QuotaBytes); err != nil {
+				return nil, fmt.Errorf("parse result #%d: %w", len(records)+1, err)
+			}
+			records = append(records, r)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("close query with #%d results: %w", len(records), err)
+		}
+		return records, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.([]store.Record), nil
+}
