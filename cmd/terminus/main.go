@@ -10,13 +10,16 @@ import (
 	"regexp"
 	"syscall"
 
+	"github.com/treeverse/terminus/pkg/http"
 	"github.com/treeverse/terminus/pkg/queue_handler"
 	"github.com/treeverse/terminus/pkg/store/sql"
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/dustin/go-humanize"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func main() {
@@ -48,10 +51,26 @@ var rootCmd = &cobra.Command{
 It may can track S3 resources used by lakeFS installations or users.`,
 }
 
+// GetFlagBytes returns the value of flag using humanized bytes.  E.g. "8K" -> 8192.
+func GetFlagBytes(flags *pflag.FlagSet, flag string) (int64, error) {
+	s, err := flags.GetString(flag)
+	if err != nil {
+		return 0, fmt.Errorf("get flag %s: %w", flag, err)
+	}
+	bytes, err := humanize.ParseBytes(s)
+	if err != nil {
+		return 0, fmt.Errorf("parse flag %s value %s: %w", flag, s)
+	}
+	if int64(bytes) < 0 {
+		return int64(bytes), fmt.Errorf("Quota bytes %s too large", flag)
+	}
+	return int64(bytes), nil
+}
+
 var runCmd = &cobra.Command{
 	Use:     "run",
 	Short:   "Start the Terminus server",
-	Example: "terminus run --sqs-name=terminus-queue --db-dsn=postgres:///",
+	Example: "terminus run --sqs-name=terminus-queue --db-dsn=postgres:/// --default-quota=1G",
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 		dbDriver, err := cmd.Flags().GetString("db-driver")
@@ -64,7 +83,9 @@ var runCmd = &cobra.Command{
 		DieOnErr(err)
 
 		fmt.Println("Open DB")
-		store, err := sql.NewSQLStore(db)
+		defaultQuotaBytes, err := GetFlagBytes(cmd.Flags(), "default-quota")
+		DieOnErr(err)
+		store, err := sql.NewSQLStore(db, defaultQuotaBytes)
 		DieOnErr(err)
 
 		fmt.Println("Open SQS")
@@ -84,7 +105,13 @@ var runCmd = &cobra.Command{
 
 		pollCtx, _ := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 
-		fmt.Println("Starting to listen...")
+		server := &http.Server{Store: store}
+		listenAddress, err := cmd.Flags().GetString("listen")
+		DieOnErr(err)
+		fmt.Printf("Starting webserver on %s...\n", listenAddress)
+		server.Serve(ctx, listenAddress)
+
+		fmt.Println("Starting to listen on queue...")
 		queue_handler.Poll(pollCtx, logger, sqs, queueName, keyRegexp, keyReplacement, store)
 		fmt.Println("Done!")
 	},
@@ -93,8 +120,11 @@ var runCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(runCmd)
 
+	runCmd.Flags().StringP("listen", "l", "localhost:80", "Address for webserver to listen")
 	runCmd.Flags().StringP("sqs-name", "q", "", "Name of topic on SQS with S3 events to process")
 	runCmd.MarkFlagRequired("sqs-name")
+
+	runCmd.Flags().StringP("default-quota", "Q", "5KB", "Default quota size")
 
 	runCmd.Flags().String("db-driver", "pgx", "Database driver code")
 	runCmd.Flags().StringP("db-dsn", "d", "", "DSN to connect to database")
