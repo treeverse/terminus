@@ -8,6 +8,7 @@ import (
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"log"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -27,15 +28,14 @@ const (
 )
 
 var (
-	pool        *dockertest.Pool
-	databaseURI string
-	db          *dbsql.DB
+	pool *dockertest.Pool
+	db   *dbsql.DB
 )
 
-func runDBInstance(dockerPool *dockertest.Pool) (string, func()) {
+func runDBInstance() (string, func()) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbSetupTimeout)
 	defer cancel()
-	resource, err := dockerPool.Run("postgres", "11", []string{
+	resource, err := pool.Run("postgres", "11", []string{
 		"POSTGRES_USER=terminus",
 		"POSTGRES_PASSWORD=testing",
 		fmt.Sprintf("POSTGRES_DB=%s", dbName),
@@ -46,7 +46,7 @@ func runDBInstance(dockerPool *dockertest.Pool) (string, func()) {
 
 	// set cleanup
 	closer := func() {
-		err := dockerPool.Purge(resource)
+		err := pool.Purge(resource)
 		if err != nil {
 			log.Fatalf("Kill postgres container: %s", err)
 		}
@@ -62,7 +62,7 @@ func runDBInstance(dockerPool *dockertest.Pool) (string, func()) {
 
 	// create connection
 	uri := fmt.Sprintf("postgres://terminus:testing@localhost:%s/"+dbName+"?sslmode=disable", resource.GetPort("5432/tcp"))
-	err = dockerPool.Retry(func() error {
+	err = pool.Retry(func() error {
 		var err error
 		db, err = dbsql.Open("pgx", uri)
 		if err != nil {
@@ -73,7 +73,6 @@ func runDBInstance(dockerPool *dockertest.Pool) (string, func()) {
 		if err != nil {
 			return fmt.Errorf("Ping DB: %w", err)
 		}
-		log.Printf("DDL: %s", ddl.DDL)
 		_, err = db.ExecContext(ctx, ddl.DDL)
 		if err != nil {
 			return fmt.Errorf("Create DB schema: %w", err)
@@ -89,17 +88,14 @@ func runDBInstance(dockerPool *dockertest.Pool) (string, func()) {
 }
 
 func TestMain(m *testing.M) {
-	pool, err := dockertest.NewPool("")
+	var err error
+	pool, err = dockertest.NewPool("")
 	if err != nil {
 		log.Fatalf("Could not connect to Docker: %s", err)
 	}
 	pool.MaxWait = dbSetupTimeout
 
-	var cleanup func()
-	databaseURI, cleanup = runDBInstance(pool)
-
 	code := m.Run()
-	cleanup()
 	os.Exit(code)
 }
 
@@ -110,6 +106,8 @@ func value(sizeBytes int64) store.Value {
 const defaultQuota = 50
 
 func TestSet(t *testing.T) {
+	_, cleanup := runDBInstance()
+	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), dbTestTimeout)
 	defer cancel()
 	s, err := sql.NewSQLStore(db, defaultQuota)
@@ -140,6 +138,8 @@ func TestSet(t *testing.T) {
 }
 
 func TestSetGet(t *testing.T) {
+	_, cleanup := runDBInstance()
+	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), dbTestTimeout)
 	defer cancel()
 	s, err := sql.NewSQLStore(db, defaultQuota)
@@ -181,6 +181,8 @@ func TestSetGet(t *testing.T) {
 }
 
 func TestAddSizeBytes(t *testing.T) {
+	_, cleanup := runDBInstance()
+	defer cleanup()
 	ctx, cancel := context.WithTimeout(context.Background(), dbTestTimeout)
 	defer cancel()
 	s, err := sql.NewSQLStore(db, defaultQuota)
@@ -188,7 +190,7 @@ func TestAddSizeBytes(t *testing.T) {
 		t.Fatalf("Open SQL store: %s", err)
 	}
 
-	keyInitialized, keyUsed := "set:a", "set:b"
+	keyInitialized, keyUsed := "add:initialized", "add:used"
 	if err = s.Set(ctx, keyInitialized, value(1)); err != nil {
 		t.Fatalf("Set %s: %s", keyInitialized, err)
 	}
@@ -233,5 +235,75 @@ func TestAddSizeBytes(t *testing.T) {
 
 	if err = s.AddSizeBytes(ctx, keyUsed, defaultQuota); !errors.Is(err, store.ErrQuotaExceeded) {
 		t.Errorf("AddSizeBytes %s: expected quota exceeded, got %s", keyUsed, err)
+	}
+}
+
+// ByKey is a sort.Interface for sorting store.Record by keys.
+type ByKey []store.Record
+
+func (s ByKey) Len() int           { return len(s) }
+func (s ByKey) Less(i, j int) bool { return s[i].Key < s[j].Key }
+func (s ByKey) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+func TestExceeded(t *testing.T) {
+	_, cleanup := runDBInstance()
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), dbTestTimeout)
+	defer cancel()
+	s, err := sql.NewSQLStore(db, defaultQuota)
+	if err != nil {
+		t.Fatalf("Open SQL store: %s", err)
+	}
+
+	const (
+		keyOKDefault    = "exceeded: ok under default"
+		keyOKSpecific   = "exceeded: ok under specific quota"
+		keyOverDefault  = "exceeded: over default"
+		keyOverSpecific = "exceeded: over specific quota"
+
+		specificQuota = defaultQuota + 20
+	)
+
+	bytes := []struct {
+		Key   string
+		Bytes int64
+	}{
+		{keyOKDefault, defaultQuota},
+		{keyOKSpecific, defaultQuota + 5},
+		{keyOverDefault, defaultQuota + 10},
+		{keyOverSpecific, specificQuota + 15},
+	}
+
+	// setup quotas
+	if _, err := db.Exec(
+		`INSERT INTO usage (key, size_bytes, quota) VALUES ($1, 0, $3), ($2, 0, $3)`,
+		keyOKSpecific, keyOverSpecific, specificQuota); err != nil {
+		t.Fatalf("Set specific quotas for %s, %s: %s", keyOKSpecific, keyOverSpecific, err)
+	}
+
+	// setup values, ignoring over-quota messages from Set.
+	for _, b := range bytes {
+		if err = s.Set(ctx, b.Key, value(b.Bytes)); err != nil && !errors.Is(err, store.ErrQuotaExceeded) {
+			t.Fatalf("Set %s to %d: %s", b.Key, b.Bytes, err)
+		}
+	}
+
+	expected := []store.Record{
+		{Key: keyOverDefault, Info: store.Info{UsageBytes: defaultQuota + 10, QuotaBytes: defaultQuota}},
+		{Key: keyOverSpecific, Info: store.Info{UsageBytes: specificQuota + 15, QuotaBytes: specificQuota}},
+	}
+	sort.Sort(ByKey(expected))
+
+	exceeded, err := s.GetExceeded(ctx)
+	if err != nil {
+		t.Fatalf("Get quota exceeded: %s", err)
+	}
+
+	sort.Sort(ByKey(exceeded))
+
+	if diffs := deep.Equal(exceeded, expected); diffs != nil {
+		t.Error("Unexpected results for GetExceeded ", diffs)
+		t.Log("Got:", exceeded)
+		t.Log("Expected:", expected)
 	}
 }
