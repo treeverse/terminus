@@ -67,24 +67,33 @@ func GetFlagBytes(flags *pflag.FlagSet, flag string) (int64, error) {
 	return int64(bytes), nil
 }
 
+func GetFlagBytesOrDie(flags *pflag.FlagSet, flag string) int64 {
+	i, err := GetFlagBytes(flags, flag)
+	DieOnErr(err)
+	return i
+}
+
+func GetFlagStringOrDie(flags *pflag.FlagSet, flag string) string {
+	s, err := flags.GetString(flag)
+	DieOnErr(err)
+	return s
+}
+
 var runCmd = &cobra.Command{
 	Use:     "run",
 	Short:   "Start the Terminus server",
 	Example: "terminus run --sqs-name=terminus-queue --db-dsn=postgres:/// --default-quota=1G",
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
-		dbDriver, err := cmd.Flags().GetString("db-driver")
-		DieOnErr(err)
-		dbDSN, err := cmd.Flags().GetString("db-dsn")
-		DieOnErr(err)
+		dbDriver := GetFlagStringOrDie(cmd.Flags(), "db-driver")
+		dbDSN := GetFlagStringOrDie(cmd.Flags(), "db-dsn")
 		db, err := dbsql.Open(dbDriver, dbDSN)
 		DieOnErr(err)
 		err = db.PingContext(ctx)
 		DieOnErr(err)
 
 		fmt.Println("Open DB")
-		defaultQuotaBytes, err := GetFlagBytes(cmd.Flags(), "default-quota")
-		DieOnErr(err)
+		defaultQuotaBytes := GetFlagBytesOrDie(cmd.Flags(), "default-quota")
 		store, err := sql.NewSQLStore(db, defaultQuotaBytes)
 		DieOnErr(err)
 
@@ -94,20 +103,16 @@ var runCmd = &cobra.Command{
 
 		logger := log.Default()
 		logger.SetPrefix("[terminus] ")
-		queueName, err := cmd.Flags().GetString("sqs-name")
-		DieOnErr(err)
-		keyPattern, err := cmd.Flags().GetString("pattern")
-		DieOnErr(err)
+		queueName := GetFlagStringOrDie(cmd.Flags(), "sqs-name")
+		keyPattern := GetFlagStringOrDie(cmd.Flags(), "pattern")
 		keyRegexp, err := regexp.Compile(keyPattern)
 		DieOnErr(err)
-		keyReplacement, err := cmd.Flags().GetString("replacement")
-		DieOnErr(err)
+		keyReplacement := GetFlagStringOrDie(cmd.Flags(), "replacement")
 
 		pollCtx, _ := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 
 		server := &http.Server{Store: store}
-		listenAddress, err := cmd.Flags().GetString("listen")
-		DieOnErr(err)
+		listenAddress := GetFlagStringOrDie(cmd.Flags(), "listen")
 		fmt.Printf("Starting webserver on %s...\n", listenAddress)
 		server.Serve(ctx, listenAddress)
 
