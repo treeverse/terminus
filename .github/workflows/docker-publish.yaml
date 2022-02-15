@@ -3,8 +3,9 @@ name: Docker
 on:
   workflow_dispatch:
     inputs:
-      tag:
+      image_tag:
         description: Tag/version to publish
+        required: true
 
 permissions:
   id-token: write
@@ -48,5 +49,5 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          docker build . -t $ECR_REGISTRY/terminus:${{ steps.version.outputs.tag }}
-          docker push $ECR_REGISTRY/terminus:${{ steps.version.outputs.tag }}
+          docker build . -t $ECR_REGISTRY/terminus:${{ github.event.inputs.image_tag }}
+          docker push $ECR_REGISTRY/terminus:${{ github.event.inputs.image_tag }}
