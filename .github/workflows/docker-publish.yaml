@@ -3,8 +3,9 @@ name: Docker
 on:
   workflow_dispatch:
     inputs:
-      tag:
+      image_tag:
         description: Tag/version to publish
+        required: true
 
 permissions:
   id-token: write
