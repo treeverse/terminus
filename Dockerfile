@@ -23,5 +23,4 @@ COPY --from=build /build/terminus ./
 RUN addgroup -S terminus && adduser -S terminus -G terminus
 USER terminus
 WORKDIR /home/terminus
-ENTRYPOINT ["/app/terminus"]
-CMD ["run"]
+ENTRYPOINT ["/app/terminus", "run"]
