@@ -135,7 +135,7 @@ func init() {
 	runCmd.Flags().StringP("db-dsn", "d", "", "DSN to connect to database")
 	runCmd.MarkFlagRequired("db-dsn")
 
-	runCmd.Flags().StringP("pattern", "p", `^s3://[^/]+/user/([^/]+)/.*$`, "Regexp matching paths to track")
+	runCmd.Flags().StringP("pattern", "p", `^s3://[^/]+/user_([^/]+)/.*$`, "Regexp matching paths to track")
 	runCmd.Flags().StringP("replacement", "r", "$1", "Replacement on path matched by `--pattern' generating key for quota")
 }
 
